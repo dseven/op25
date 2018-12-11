@@ -751,6 +751,8 @@ class p25_rx_block (gr.top_block):
         elif s == 'add_default_config':
             nac = msg.arg1()
             self.trunk_rx.add_default_config(int(nac))
+        elif s == 'goto_tg':
+            self.trunk_rx.goto_tg(int(msg.arg1()))
         elif s in RX_COMMANDS:
             self.rx_q.insert_tail(msg)
         return False

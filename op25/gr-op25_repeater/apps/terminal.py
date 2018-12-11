@@ -123,7 +123,7 @@ class curses_terminal(threading.Thread):
 
     def title_help(self):
         title_str = "OP25"
-        help_str = "(f)req (h)old (s)kip (l)ock (q)uit (1-5)plot (,.<>)tune"
+        help_str = "(f)req (g)oto (h)old (s)kip (l)ock (q)uit (1-5)plot (,.<>)tune"
         self.title_bar.erase()
         self.help_bar.erase()
         self.title_bar.addstr(0, 0, title_str.center(self.maxx-1, " "), curses.A_REVERSE)
@@ -179,6 +179,21 @@ class curses_terminal(threading.Thread):
                 freq = None
             if freq:
                 self.send_command('set_freq', freq)
+        elif c == ord('g'):
+            self.prompt.addstr(0, 0, 'TGID')
+            self.prompt.refresh()
+            self.text_win.erase()
+            response = self.textpad.edit()
+            self.prompt.erase()
+            self.prompt.refresh()
+            self.text_win.erase()
+            self.text_win.refresh()
+            self.title_help()
+            try:
+                goto_tg = int(response or 0)
+                self.send_command('goto_tg', goto_tg)
+            except:
+                pass
         elif c == ord(','):
             self.send_command('adj_tune', -100)
         elif c == ord('.'):
@@ -247,10 +262,13 @@ class curses_terminal(threading.Thread):
             s = 'Frequency %f' % (msg['freq'] / 1000000.0)
             if msg['fine_tune'] is not None:
                 s +='(%d)' % msg['fine_tune']
+            tgid_goto = msg.get('tgid_goto')
             if msg['tgid'] is not None:
                 s += ' Talkgroup ID %s' % (msg['tgid'])
                 if msg['tdma'] is not None:
                     s += ' TDMA Slot %s' % msg['tdma']
+            elif tgid_goto:
+                s += ' Waiting for Talkgroup ID %s' % tgid_goto
             s = s[:(self.maxx - 16)]
             self.active1.erase()
             self.active2.erase()

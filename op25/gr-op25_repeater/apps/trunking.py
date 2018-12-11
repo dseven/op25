@@ -245,28 +245,32 @@ class trunked_system (object):
         for tg in expired_tgs:
             self.blacklist.pop(tg)
 
-    def find_talkgroup(self, start_time, tgid=None, hold=False):
+    def find_talkgroup(self, start_time, tgid=None, hold=False, goto=None):
         tgt_tgid = None
-        self.blacklist_update(start_time)
 
-        if tgid is not None and tgid in self.talkgroups:
-            tgt_tgid = tgid
+        if goto:
+            if goto in self.talkgroups:
+                tgt_tgid = goto
+        else:
+            self.blacklist_update(start_time)
+            if tgid is not None and tgid in self.talkgroups:
+                tgt_tgid = tgid
 
-        for active_tgid in self.talkgroups:
-            if hold:
-                break
-            if self.talkgroups[active_tgid]['time'] < start_time:
-                continue
-            if active_tgid in self.blacklist and (not self.whitelist or active_tgid not in self.whitelist):
-                continue
-            if self.whitelist and active_tgid not in self.whitelist:
-                continue
-            if self.talkgroups[active_tgid]['tdma_slot'] is not None and (self.ns_syid < 0 or self.ns_wacn < 0):
-                continue
-            if tgt_tgid is None:
-                tgt_tgid = active_tgid
-            elif self.talkgroups[active_tgid]['prio'] < self.talkgroups[tgt_tgid]['prio']:
-                tgt_tgid = active_tgid
+            for active_tgid in self.talkgroups:
+                if hold:
+                    break
+                if self.talkgroups[active_tgid]['time'] < start_time:
+                    continue
+                if active_tgid in self.blacklist and (not self.whitelist or active_tgid not in self.whitelist):
+                    continue
+                if self.whitelist and active_tgid not in self.whitelist:
+                    continue
+                if self.talkgroups[active_tgid]['tdma_slot'] is not None and (self.ns_syid < 0 or self.ns_wacn < 0):
+                    continue
+                if tgt_tgid is None:
+                    tgt_tgid = active_tgid
+                elif self.talkgroups[active_tgid]['prio'] < self.talkgroups[tgt_tgid]['prio']:
+                    tgt_tgid = active_tgid
                    
         if tgt_tgid is not None and self.talkgroups[tgt_tgid]['time'] >= start_time:
             return self.talkgroups[tgt_tgid]['frequency'], tgt_tgid, self.talkgroups[tgt_tgid]['tdma_slot'], self.talkgroups[tgt_tgid]['srcaddr']
@@ -623,6 +627,7 @@ class rx_ctl (object):
         self.trunked_systems = {}
         self.frequency_set = frequency_set
         self.debug = debug
+        self.tgid_goto = None
         self.tgid_hold = None
         self.tgid_hold_until = time.time()
         self.hold_mode = False
@@ -771,6 +776,9 @@ class rx_ctl (object):
         self.current_state = self.states.CC
         if nac not in self.nacs:
             self.nacs.append(nac)
+
+    def goto_tg(self, new_tgid):
+        self.tgid_goto = new_tgid or None
 
     def setup_config(self, configs):
         for nac in configs:
@@ -1075,7 +1083,7 @@ class rx_ctl (object):
                     desired_tgid = self.tgid_hold
                 elif (self.tgid_hold is not None) and (self.hold_mode == False):
                     self.tgid_hold = None
-                new_frequency, new_tgid, tdma_slot, srcaddr = tsys.find_talkgroup(curr_time, tgid=desired_tgid, hold=self.hold_mode)
+                new_frequency, new_tgid, tdma_slot, srcaddr = tsys.find_talkgroup(curr_time, tgid=desired_tgid, hold=self.hold_mode, goto=self.tgid_goto)
                 if new_frequency:
                     if self.debug > 0:
                         tslot = tdma_slot if tdma_slot is not None else '-'
@@ -1088,8 +1096,8 @@ class rx_ctl (object):
                     self.wait_until = curr_time + self.TSYS_HOLD_TIME
                     new_slot = tdma_slot
             else: # check for priority tgid preemption
-                new_frequency, new_tgid, tdma_slot, srcaddr = tsys.find_talkgroup(tsys.talkgroups[self.current_tgid]['time'], tgid=self.current_tgid, hold=self.hold_mode)
-                if new_tgid != self.current_tgid:
+                new_frequency, new_tgid, tdma_slot, srcaddr = tsys.find_talkgroup(tsys.talkgroups[self.current_tgid]['time'], tgid=self.current_tgid, hold=self.hold_mode, goto=self.tgid_goto)
+                if new_tgid and new_tgid != self.current_tgid:
                     if self.debug > 0:
                         tslot = tdma_slot if tdma_slot is not None else '-'
                         sys.stderr.write("%f voice preempt: tg(%s), freq(%s), slot(%s), prio(%d)\n" % (time.time(), new_tgid, new_frequency, tslot, tsys.get_prio(new_tgid)))
@@ -1206,6 +1214,7 @@ class rx_ctl (object):
             self.set_frequency({
                 'freq':   new_frequency,
                 'tgid':   self.current_tgid,
+                'tgid_goto':   self.tgid_goto,
                 'offset': tsys.offset,
                 'tag':    tsys.get_tag(self.current_tgid),
                 'nac':    nac,
